@@ -205,7 +205,7 @@ export default function App() {
 
       <main className="flex-1 flex overflow-hidden z-10 relative">
         {isSidebarOpen && (
-          <aside className="w-64 md:w-80 bg-slate-900/95 md:bg-white/5 backdrop-blur-md border-r border-white/10 flex flex-col shrink-0 absolute md:relative z-30 h-full shadow-2xl md:shadow-none">
+          <aside className="w-64 md:w-80 bg-slate-900/95 md:bg-white/5 backdrop-blur-md border-r border-white/10 flex flex-col shrink-0 absolute md:relative z-50 h-full shadow-2xl md:shadow-none">
             <div className="flex bg-black/20 p-1 m-4 rounded-xl border border-white/5">
               <button 
                 onClick={() => setSidebarTab('lessons')} 
