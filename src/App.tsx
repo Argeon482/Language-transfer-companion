@@ -51,7 +51,7 @@ export default function App() {
       setIsLoadingDB(false);
       setDbError(null);
     }, (error) => {
-        console.error("Firestore Error (lessons):", error);
+        console.warn("Firestore Error (lessons):", error);
         setDbError(error.message);
         setIsLoadingDB(false);
     });
@@ -60,7 +60,7 @@ export default function App() {
       const loadedFlashcards = snapshot.docs.map(d => d.data() as Flashcard);
       setFlashcards(loadedFlashcards);
     }, (error) => {
-        console.error("Firestore Error (flashcards):", error);
+        console.warn("Firestore Error (flashcards):", error);
     });
 
     return () => {
@@ -221,7 +221,7 @@ export default function App() {
     );
   }
 
-  if (dbError) {
+  if (dbError && lessons.length === 0) {
     return (
       <div className="w-full h-[100dvh] bg-[#0f172a] text-white flex flex-col items-center justify-center font-sans p-6 text-center relative">
         <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
