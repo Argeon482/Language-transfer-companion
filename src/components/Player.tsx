@@ -27,7 +27,34 @@ export const Player = ({ audioFile, transcriptData }: Props) => {
     useEffect(() => {
         const url = URL.createObjectURL(audioFile);
         setAudioUrl(url);
+        return () => URL.revokeObjectURL(url);
+    }, [audioFile]);
 
+    const allWords = useMemo(() => {
+        let index = 0;
+        const words: GlobalWord[] = [];
+        transcriptData.segments.forEach(segment => {
+            segment.words?.forEach(w => {
+                words.push({ ...w, globalIndex: index++ });
+            });
+        });
+        return words;
+    }, [transcriptData]);
+
+    const bubbles = useMemo(() => {
+        const bbs: Bubble[] = [];
+        let current: Bubble | null = null;
+        allWords.forEach(w => {
+            if (!current || current.speaker !== w.speaker) {
+                current = { id: `b-${w.globalIndex}`, speaker: w.speaker, words: [] };
+                bbs.push(current);
+            }
+            current.words.push(w);
+        });
+        return bbs;
+    }, [allWords]);
+
+    useEffect(() => {
         // Setup Media Session for lockscreen/headphone controls
         if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = new MediaMetadata({
@@ -55,21 +82,34 @@ export const Player = ({ audioFile, transcriptData }: Props) => {
                 }
             });
             
-            // Map previous/next track buttons on headphones to skip backward/forward 5 seconds
-            navigator.mediaSession.setActionHandler('previoustrack', () => {
-                if (audioRef.current) {
-                    audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 5);
+            const handleSkipToPreviousTeacher = () => {
+                if (!audioRef.current) return;
+                const currentTime = audioRef.current.currentTime;
+                let targetTime = Math.max(0, currentTime - 5); 
+                
+                for (let i = bubbles.length - 1; i >= 0; i--) {
+                    const bubble = bubbles[i];
+                    if (bubble.speaker !== 'student' && bubble.words.length > 0) {
+                        const bubbleStart = bubble.words[0].start;
+                        // Give a 1 second buffer so we don't just jump to the start of the current bubble if we're only 0.5s into it
+                        if (bubbleStart < currentTime - 1) {
+                            targetTime = bubbleStart;
+                            break;
+                        }
+                    }
                 }
-            });
-            navigator.mediaSession.setActionHandler('nexttrack', () => {
-                if (audioRef.current) {
-                    audioRef.current.currentTime = Math.min(audioRef.current.duration, audioRef.current.currentTime + 5);
-                }
-            });
+                
+                audioRef.current.currentTime = targetTime;
+                audioRef.current.play().catch(() => {});
+            };
+
+            // Map previous/next track buttons on headphones to skip backward to the previous teacher prompt
+            // Since double-click (nexttrack) is the easiest shortcut on headphones, we map both to this primary action.
+            navigator.mediaSession.setActionHandler('previoustrack', handleSkipToPreviousTeacher);
+            navigator.mediaSession.setActionHandler('nexttrack', handleSkipToPreviousTeacher);
         }
 
         return () => {
-            URL.revokeObjectURL(url);
             if ('mediaSession' in navigator) {
                 navigator.mediaSession.setActionHandler('play', null);
                 navigator.mediaSession.setActionHandler('pause', null);
@@ -79,31 +119,7 @@ export const Player = ({ audioFile, transcriptData }: Props) => {
                 navigator.mediaSession.setActionHandler('nexttrack', null);
             }
         };
-    }, [audioFile]);
-
-    const allWords = useMemo(() => {
-        let index = 0;
-        const words: GlobalWord[] = [];
-        transcriptData.segments.forEach(segment => {
-            segment.words?.forEach(w => {
-                words.push({ ...w, globalIndex: index++ });
-            });
-        });
-        return words;
-    }, [transcriptData]);
-
-    const bubbles = useMemo(() => {
-        const bbs: Bubble[] = [];
-        let current: Bubble | null = null;
-        allWords.forEach(w => {
-            if (!current || current.speaker !== w.speaker) {
-                current = { id: `b-${w.globalIndex}`, speaker: w.speaker, words: [] };
-                bbs.push(current);
-            }
-            current.words.push(w);
-        });
-        return bbs;
-    }, [allWords]);
+    }, [audioFile.name, bubbles]);
 
     const pausePoints = useMemo(() => {
         const points: number[] = [];
