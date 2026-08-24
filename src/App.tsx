@@ -10,13 +10,19 @@ import { collection, onSnapshot, query, orderBy, setDoc, doc, deleteDoc } from '
 export default function App() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
-  const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
+  const [activeLessonId, setActiveLessonId] = useState<string | null>(() => localStorage.getItem("lastLessonId"));
   const [search, setSearch] = useState('');
   const [isLoadingDB, setIsLoadingDB] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [sidebarTab, setSidebarTab] = useState<'lessons' | 'flashcards'>('lessons');
   const [autoPlay, setAutoPlay] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
+
+  useEffect(() => {
+    if (activeLessonId) {
+      localStorage.setItem("lastLessonId", activeLessonId);
+    }
+  }, [activeLessonId]);
 
   useEffect(() => {
     const lessonsQuery = query(collection(db, 'lessons'), orderBy('order', 'asc'));
@@ -285,6 +291,7 @@ export default function App() {
           {activeLesson && (
             <Player 
               key={activeLesson.id} 
+              lessonId={activeLesson.id}
               audioUrl={activeLesson.audioUrl} 
               lessonName={activeLesson.name}
               transcriptData={activeLesson.transcriptData} 

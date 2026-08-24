@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import localforage from 'localforage';
+
 import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import { TranscriptData, GlobalWord, Bubble } from '../types';
 import { TranscriptView } from './TranscriptView';
@@ -6,6 +8,7 @@ import { TranscriptView } from './TranscriptView';
 interface Props {
     key?: any;
     audioUrl: string;
+    lessonId: string;
     lessonName: string;
     transcriptData: TranscriptData;
     onAutoFlashcard?: (front: string, back: string) => void;
@@ -13,9 +16,53 @@ interface Props {
     autoPlay?: boolean;
 }
 
-export const Player = ({ audioUrl, lessonName, transcriptData, onAutoFlashcard, onLessonComplete, autoPlay }: Props) => {
+export const Player = ({ audioUrl, lessonId, lessonName, transcriptData, onAutoFlashcard, onLessonComplete, autoPlay }: Props) => {
     
     const audioRef = useRef<HTMLAudioElement>(null);
+    const [localAudioUrl, setLocalAudioUrl] = useState<string | null>(null);
+
+    useEffect(() => {
+        let isActive = true;
+        let objectUrl: string | null = null;
+
+        const loadAudio = async () => {
+            if (!lessonId || !audioUrl) return;
+            
+            try {
+                // 1. Check local cache
+                const cachedBlob = await localforage.getItem<Blob>(`audio-${lessonId}`);
+                if (cachedBlob && isActive) {
+                    objectUrl = URL.createObjectURL(cachedBlob);
+                    setLocalAudioUrl(objectUrl);
+                    return;
+                }
+
+                // 2. Not in cache, stream from cloud immediately
+                if (isActive) {
+                    setLocalAudioUrl(audioUrl);
+                }
+
+                // 3. Download in background for future use
+                const response = await fetch(audioUrl);
+                if (response.ok) {
+                    const blob = await response.blob();
+                    await localforage.setItem(`audio-${lessonId}`, blob);
+                }
+            } catch (err) {
+                console.warn("Failed to cache audio locally:", err);
+                if (isActive && !localAudioUrl) {
+                    setLocalAudioUrl(audioUrl);
+                }
+            }
+        };
+
+        loadAudio();
+
+        return () => {
+            isActive = false;
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+        };
+    }, [audioUrl, lessonId]);
     
     const [isPlaying, setIsPlaying] = useState(false);
     const [duration, setDuration] = useState(0);
@@ -350,7 +397,7 @@ export const Player = ({ audioUrl, lessonName, transcriptData, onAutoFlashcard, 
                         {audioUrl && (
                 <audio 
                     ref={audioRef} 
-                    src={audioUrl} 
+                    src={localAudioUrl || undefined} 
                     autoPlay={autoPlay}
                     onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
                     onPlay={() => { 
