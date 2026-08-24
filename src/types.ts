@@ -1,7 +1,7 @@
 export interface Lesson {
   id: string;
   name: string;
-  audioFile: File;
+  audioUrl: string;
   transcriptData: TranscriptData;
 }
 

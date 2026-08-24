@@ -1,15 +1,11 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import { useState, useMemo, useEffect } from 'react';
 import { Setup } from './components/Setup';
 import { Player } from './components/Player';
 import { FlashcardsView } from './components/FlashcardsView';
 import { Lesson, Flashcard } from './types';
-import localforage from 'localforage';
 import { Menu, BookOpen, Layers, Maximize } from 'lucide-react';
+import { db } from './lib/firebase';
+import { collection, onSnapshot, query, orderBy, setDoc, doc, deleteDoc } from 'firebase/firestore';
 
 export default function App() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
@@ -20,48 +16,40 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [sidebarTab, setSidebarTab] = useState<'lessons' | 'flashcards'>('lessons');
   const [autoPlay, setAutoPlay] = useState(false);
+  const [showSetup, setShowSetup] = useState(false);
 
   useEffect(() => {
-    Promise.all([
-      localforage.getItem<Lesson[]>('saved_lessons'),
-      localforage.getItem<Flashcard[]>('saved_flashcards')
-    ]).then(([savedLessons, savedFlashcards]) => {
-      if (savedLessons && savedLessons.length > 0) {
-        setLessons(savedLessons);
-        setActiveLessonId(savedLessons[0].id);
-        setAutoPlay(false);
-      }
-      if (savedFlashcards) {
-        setFlashcards(savedFlashcards);
+    const lessonsQuery = query(collection(db, 'lessons'), orderBy('order', 'asc'));
+    const unsubscribeLessons = onSnapshot(lessonsQuery, (snapshot) => {
+      const loadedLessons = snapshot.docs.map(d => d.data() as Lesson);
+      setLessons(loadedLessons);
+      if (loadedLessons.length > 0 && !activeLessonId) {
+        setActiveLessonId(loadedLessons[0].id);
       }
       setIsLoadingDB(false);
-    }).catch(err => {
-      console.error(err);
-      setIsLoadingDB(false);
+    }, (error) => {
+        console.error("Firestore Error (lessons):", error);
+        setIsLoadingDB(false);
     });
-  }, []);
 
-  const handleLessonsReady = (loadedLessons: Lesson[]) => {
-    setLessons(loadedLessons);
-    setActiveLessonId(loadedLessons[0]?.id || null);
-    setAutoPlay(false);
-    localforage.setItem('saved_lessons', loadedLessons).catch(e => console.error('Failed to save to IndexedDB', e));
-  };
-
-  const handleClearLessons = () => {
-    localforage.removeItem('saved_lessons').then(() => {
-      setLessons([]);
-      setActiveLessonId(null);
-      setAutoPlay(false);
+    const unsubscribeFlashcards = onSnapshot(collection(db, 'flashcards'), (snapshot) => {
+      const loadedFlashcards = snapshot.docs.map(d => d.data() as Flashcard);
+      setFlashcards(loadedFlashcards);
+    }, (error) => {
+        console.error("Firestore Error (flashcards):", error);
     });
+
+    return () => {
+        unsubscribeLessons();
+        unsubscribeFlashcards();
+    };
+  }, []); // activeLessonId is not included on purpose to prevent resetting
+
+  const handleLessonsReady = () => {
+    setShowSetup(false);
   };
 
-  const saveFlashcards = (newFlashcards: Flashcard[]) => {
-    setFlashcards(newFlashcards);
-    localforage.setItem('saved_flashcards', newFlashcards).catch(e => console.error('Failed to save flashcards', e));
-  };
-
-  const handleAddFlashcard = (front: string, back: string) => {
+  const handleAddFlashcard = async (front: string, back: string) => {
     const newCard: Flashcard = {
       id: crypto.randomUUID(),
       front,
@@ -73,12 +61,15 @@ export default function App() {
       createdAt: Date.now(),
       lessonId: activeLessonId || undefined
     };
-    saveFlashcards([...flashcards, newCard]);
+    try {
+      await setDoc(doc(db, 'flashcards', newCard.id), newCard);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const handleAutoFlashcard = (front: string, back: string) => {
-    setFlashcards((prevFlashcards) => {
-      if (!prevFlashcards.some(c => c.front.toLowerCase() === front.toLowerCase() && c.back.toLowerCase() === back.toLowerCase())) {
+  const handleAutoFlashcard = async (front: string, back: string) => {
+    if (!flashcards.some(c => c.front.toLowerCase() === front.toLowerCase() && c.back.toLowerCase() === back.toLowerCase())) {
         const newCard: Flashcard = {
           id: crypto.randomUUID(),
           front,
@@ -90,12 +81,12 @@ export default function App() {
           createdAt: Date.now(),
           lessonId: activeLessonId || undefined
         };
-        const updated = [...prevFlashcards, newCard];
-        localforage.setItem('saved_flashcards', updated).catch(e => console.error('Failed to save flashcards', e));
-        return updated;
-      }
-      return prevFlashcards;
-    });
+        try {
+            await setDoc(doc(db, 'flashcards', newCard.id), newCard);
+        } catch (e) {
+            console.error(e);
+        }
+    }
   };
 
   const handleLessonComplete = () => {
@@ -106,55 +97,69 @@ export default function App() {
     }
   };
 
-  const handleUpdateFlashcard = (updated: Flashcard) => {
-    saveFlashcards(flashcards.map(c => c.id === updated.id ? updated : c));
+  const handleUpdateFlashcard = async (updated: Flashcard) => {
+    try {
+        await setDoc(doc(db, 'flashcards', updated.id), updated);
+    } catch(e) {
+        console.error(e);
+    }
   };
 
-  const handleDeleteFlashcard = (id: string) => {
-    saveFlashcards(flashcards.filter(c => c.id !== id));
+  const handleDeleteFlashcard = async (id: string) => {
+    try {
+        await deleteDoc(doc(db, 'flashcards', id));
+    } catch(e) {
+        console.error(e);
+    }
   };
 
   const filteredLessons = useMemo(() => {
     return lessons.filter(l => l.name.toLowerCase().includes(search.toLowerCase()));
   }, [lessons, search]);
 
-  const toggleFullScreen = async () => {
+  const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
-      await document.documentElement.requestFullscreen().catch(err => {
-        console.error(`Error attempting to enable fullscreen: ${err.message}`);
-      });
+        document.documentElement.requestFullscreen().catch(e => console.error(e));
     } else {
-      if (document.exitFullscreen) {
-        await document.exitFullscreen();
-      }
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        }
     }
   };
 
   if (isLoadingDB) {
     return (
-      <div className="w-full h-[100dvh] bg-[#0f172a] flex items-center justify-center">
-        <div className="animate-pulse text-indigo-400 font-bold tracking-widest text-sm">LOADING COURSE DATA...</div>
+      <div className="w-full h-[100dvh] bg-[#0f172a] text-white flex items-center justify-center font-sans">
+        <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
-  if (lessons.length === 0 || !activeLessonId) {
+  if (lessons.length === 0 || showSetup) {
     return (
-      <div className="w-full h-[100dvh] bg-[#0f172a] text-slate-100 font-sans overflow-hidden relative flex flex-col">
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div className="w-full h-[100dvh] bg-[#0f172a] overflow-hidden relative flex flex-col font-sans">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
           <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600/30 rounded-full blur-[120px]"></div>
           <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-cyan-600/20 rounded-full blur-[120px]"></div>
           <div className="absolute top-[20%] right-[10%] w-[30%] h-[30%] bg-purple-600/20 rounded-full blur-[100px]"></div>
         </div>
         <div className="flex-1 flex flex-col relative z-10 overflow-hidden">
           <Setup onReady={handleLessonsReady} />
+          {lessons.length > 0 && showSetup && (
+              <button 
+                  onClick={() => setShowSetup(false)}
+                  className="absolute top-8 right-8 px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors"
+              >
+                  Cancel
+              </button>
+          )}
         </div>
       </div>
     );
   }
 
-  const activeLesson = lessons.find(l => l.id === activeLessonId)!;
-  const globalLessonIndex = lessons.findIndex(l => l.id === activeLessonId);
+  const activeLesson = lessons.find(l => l.id === activeLessonId) || lessons[0];
+  const globalLessonIndex = lessons.findIndex(l => l.id === activeLesson?.id);
   const progressText = `${globalLessonIndex + 1} / ${lessons.length}`;
   const progressPercent = ((globalLessonIndex + 1) / lessons.length) * 100;
 
@@ -195,10 +200,10 @@ export default function App() {
             <Maximize className="w-4 h-4" />
           </button>
           <button 
-            onClick={handleClearLessons} 
+            onClick={() => setShowSetup(true)} 
             className="px-4 py-2 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-colors text-sm font-medium text-slate-300 hover:text-white"
           >
-            Change Folders
+            Add Folders
           </button>
         </div>
       </header>
@@ -234,7 +239,7 @@ export default function App() {
                 </div>
                 <div className="flex-1 overflow-y-auto px-2 py-3 space-y-1">
                   {filteredLessons.map((lesson) => {
-                    const isActive = lesson.id === activeLessonId;
+                    const isActive = lesson.id === activeLesson?.id;
                     const lessonNum = lessons.findIndex(l => l.id === lesson.id) + 1;
                     return (
                       <div 
@@ -277,14 +282,17 @@ export default function App() {
         )}
 
         <section className="flex-1 flex flex-col relative overflow-hidden">
-          <Player 
-            key={activeLesson.id} 
-            audioFile={activeLesson.audioFile} 
-            transcriptData={activeLesson.transcriptData} 
-            autoPlay={autoPlay}
-            onAutoFlashcard={handleAutoFlashcard}
-            onLessonComplete={handleLessonComplete}
-          />
+          {activeLesson && (
+            <Player 
+              key={activeLesson.id} 
+              audioUrl={activeLesson.audioUrl} 
+              lessonName={activeLesson.name}
+              transcriptData={activeLesson.transcriptData} 
+              autoPlay={autoPlay}
+              onAutoFlashcard={handleAutoFlashcard}
+              onLessonComplete={handleLessonComplete}
+            />
+          )}
         </section>
       </main>
     </div>

@@ -4,15 +4,16 @@ import { TranscriptData, GlobalWord, Bubble } from '../types';
 import { TranscriptView } from './TranscriptView';
 
 interface Props {
-    audioFile: File;
+    audioUrl: string;
+    lessonName: string;
     transcriptData: TranscriptData;
     onAutoFlashcard?: (front: string, back: string) => void;
     onLessonComplete?: () => void;
     autoPlay?: boolean;
 }
 
-export const Player = ({ audioFile, transcriptData, onAutoFlashcard, onLessonComplete, autoPlay }: Props) => {
-    const [audioUrl, setAudioUrl] = useState<string>('');
+export const Player = ({ audioUrl, lessonName, transcriptData, onAutoFlashcard, onLessonComplete, autoPlay }: Props) => {
+    
     const audioRef = useRef<HTMLAudioElement>(null);
     
     const [isPlaying, setIsPlaying] = useState(false);
@@ -26,12 +27,6 @@ export const Player = ({ audioFile, transcriptData, onAutoFlashcard, onLessonCom
     const activeWordIndexRef = useRef<number>(-1);
     const lastPausedPointRef = useRef<number>(-1);
 
-    // Clean up object URL safely in strict mode
-    useEffect(() => {
-        const url = URL.createObjectURL(audioFile);
-        setAudioUrl(url);
-        return () => URL.revokeObjectURL(url);
-    }, [audioFile]);
 
     const allWords = useMemo(() => {
         let index = 0;
@@ -61,7 +56,7 @@ export const Player = ({ audioFile, transcriptData, onAutoFlashcard, onLessonCom
         // Setup Media Session for lockscreen/headphone controls
         if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = new MediaMetadata({
-                title: audioFile.name.replace(/\.[^/.]+$/, ""),
+                title: lessonName,
                 artist: 'Interactive Practice',
                 album: 'Language Transfer'
             });
@@ -133,7 +128,7 @@ export const Player = ({ audioFile, transcriptData, onAutoFlashcard, onLessonCom
                 navigator.mediaSession.setActionHandler('nexttrack', null);
             }
         };
-    }, [audioFile.name, bubbles]);
+    }, [audioUrl, bubbles]);
 
     const pausePoints = useMemo(() => {
         const points: number[] = [];

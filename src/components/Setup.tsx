@@ -1,15 +1,19 @@
 import React, { useState } from 'react';
 import { BookOpen, Headphones, Play, FolderArchive } from 'lucide-react';
 import { TranscriptData, Lesson } from '../types';
+import { db, storage } from '../lib/firebase';
+import { doc, setDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 interface Props {
-    onReady: (lessons: Lesson[]) => void;
+    onReady: () => void;
 }
 
 export const Setup = ({ onReady }: Props) => {
     const [audioFiles, setAudioFiles] = useState<File[]>([]);
     const [transcriptFiles, setTranscriptFiles] = useState<File[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
     const [error, setError] = useState<string | null>(null);
 
     const handleAudioFolder = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -26,13 +30,12 @@ export const Setup = ({ onReady }: Props) => {
         if (!audioFiles.length || !transcriptFiles.length) return;
         setIsProcessing(true);
         setError(null);
+        setUploadProgress(0);
         
         try {
-            // Let the UI update to "Processing..."
-            await new Promise(r => setTimeout(r, 50));
-
-            const matchedLessons: Lesson[] = [];
             const unmatchedAudio = [...audioFiles];
+            let completed = 0;
+            const totalToProcess = transcriptFiles.length;
 
             for (const tFile of transcriptFiles) {
                 const tBase = tFile.name.replace(/\.[^/.]+$/, "");
@@ -40,13 +43,11 @@ export const Setup = ({ onReady }: Props) => {
                 const tNumMatch = tBase.match(/\d+/);
                 const tNum = tNumMatch ? parseInt(tNumMatch[0], 10) : null;
 
-                // Attempt 1: Exact normalized name match
                 let aIndex = unmatchedAudio.findIndex(a => {
                     const aBase = a.name.replace(/\.[^/.]+$/, "");
                     return aBase.toLowerCase().replace(/[^a-z0-9]/g, '') === tNorm;
                 });
 
-                // Attempt 2: Number match
                 if (aIndex === -1 && tNum !== null) {
                     aIndex = unmatchedAudio.findIndex(a => {
                         const aBase = a.name.replace(/\.[^/.]+$/, "");
@@ -64,40 +65,35 @@ export const Setup = ({ onReady }: Props) => {
                         const data = JSON.parse(text) as TranscriptData;
                         
                         if (data.segments && Array.isArray(data.segments)) {
-                            // Format lesson name smoothly
                             const title = tNum !== null ? `Lesson ${tNum}` : tBase;
-                            matchedLessons.push({
-                                id: `lesson-${tNum !== null ? tNum : tNorm}`,
+                            const id = `lesson-${tNum !== null ? tNum : tNorm}`;
+                            
+                            // Upload audio to Storage
+                            const audioRef = ref(storage, `audio/${id}/${aFile.name}`);
+                            await uploadBytes(audioRef, aFile);
+                            const audioUrl = await getDownloadURL(audioRef);
+                            
+                            // Save lesson to Firestore
+                            await setDoc(doc(db, 'lessons', id), {
+                                id,
                                 name: title,
-                                audioFile: aFile,
-                                transcriptData: data
+                                audioUrl,
+                                transcriptData: data,
+                                order: tNum !== null ? tNum : 999
                             });
                         }
                     } catch (e) {
-                        console.warn(`Failed to parse ${tFile.name}`, e);
+                        console.warn(`Failed to parse or upload ${tFile.name}`, e);
                     }
                 }
+                completed++;
+                setUploadProgress(Math.round((completed / totalToProcess) * 100));
             }
 
-            matchedLessons.sort((a, b) => {
-                const aNumMatch = a.name.match(/\d+/);
-                const bNumMatch = b.name.match(/\d+/);
-                if (aNumMatch && bNumMatch) {
-                    return parseInt(aNumMatch[0], 10) - parseInt(bNumMatch[0], 10);
-                }
-                return a.name.localeCompare(b.name, undefined, { numeric: true });
-            });
-
-            if (matchedLessons.length === 0) {
-                setError('No matching pairs found. Please make sure the audio and transcript files share the same numbers (e.g. "01") or names.');
-                setIsProcessing(false);
-                return;
-            }
-
-            onReady(matchedLessons);
+            onReady();
         } catch (e) {
             console.error(e);
-            setError('An error occurred while processing files.');
+            setError('An error occurred while uploading files.');
         }
         
         setIsProcessing(false);
@@ -112,9 +108,9 @@ export const Setup = ({ onReady }: Props) => {
                         <FolderArchive className="text-indigo-400" /> Lesson Folders
                     </h1>
                     <p className="text-slate-400 text-sm mb-8 leading-relaxed">
-                        Upload folders containing your language audios and their matching JSON transcripts. They will be paired automatically by filename.
+                        Upload folders containing your language audios and their matching JSON transcripts. They will be paired automatically by filename and uploaded to the cloud.
                     </p>
-
+                    
                     <div className="space-y-4 mb-8">
                         <label className={`flex flex-col items-center justify-center w-full h-32 border border-dashed rounded-xl cursor-pointer transition-colors ${audioFiles.length > 0 ? 'border-indigo-400/50 bg-indigo-500/10' : 'border-white/20 bg-white/5 hover:bg-white/10'}`}>
                             <Headphones className={`w-8 h-8 mb-2 ${audioFiles.length > 0 ? 'text-indigo-400' : 'text-slate-500'}`} />
@@ -124,7 +120,7 @@ export const Setup = ({ onReady }: Props) => {
                             {audioFiles.length > 0 && <span className="text-xs text-slate-400 mt-1">{audioFiles.length} valid audio files found</span>}
                             <input type="file" {...{ webkitdirectory: "", directory: "" }} multiple className="hidden" onChange={handleAudioFolder} />
                         </label>
-
+                        
                         <label className={`flex flex-col items-center justify-center w-full h-32 border border-dashed rounded-xl cursor-pointer transition-colors ${transcriptFiles.length > 0 ? 'border-indigo-400/50 bg-indigo-500/10' : 'border-white/20 bg-white/5 hover:bg-white/10'}`}>
                             <BookOpen className={`w-8 h-8 mb-2 ${transcriptFiles.length > 0 ? 'text-indigo-400' : 'text-slate-500'}`} />
                             <span className="text-sm font-medium text-slate-300">
@@ -136,13 +132,20 @@ export const Setup = ({ onReady }: Props) => {
                     </div>
 
                     {error && <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>}
-
+                    
                     <button 
                         onClick={handleStart}
                         disabled={audioFiles.length === 0 || transcriptFiles.length === 0 || isProcessing}
-                        className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-white/5 disabled:text-slate-500 disabled:border disabled:border-white/10 disabled:cursor-not-allowed text-white font-semibold py-4 rounded-xl transition-colors shadow-lg shadow-indigo-500/20"
+                        className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-white/5 disabled:text-slate-500 disabled:border disabled:border-white/10 disabled:cursor-not-allowed text-white font-semibold py-4 rounded-xl transition-colors shadow-lg shadow-indigo-500/20 relative overflow-hidden"
                     >
-                        {isProcessing ? 'Processing...' : <><Play className="w-5 h-5 fill-current" /> Build Course Layout</>}
+                        {isProcessing ? (
+                            <>
+                                <div className="absolute inset-0 bg-indigo-400/30" style={{ width: `${uploadProgress}%`, transition: 'width 0.3s ease' }}></div>
+                                <span className="relative z-10">Uploading... {uploadProgress}%</span>
+                            </>
+                        ) : (
+                            <><Play className="w-5 h-5 fill-current" /> Upload & Build Course</>
+                        )}
                     </button>
                 </div>
             </div>
