@@ -18,12 +18,14 @@ export const Setup = ({ onReady }: Props) => {
 
     const handleAudioFolder = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files || []) as File[];
-        setAudioFiles(files.filter(f => f.type.startsWith('audio/') || f.name.match(/\.(mp3|wav|ogg|m4a)$/i)));
+        const valid = files.filter(f => f.type.startsWith('audio/') || f.name.endsWith('.mp3'));
+        setAudioFiles(valid);
     };
 
     const handleTranscriptFolder = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files || []) as File[];
-        setTranscriptFiles(files.filter(f => f.type === 'application/json' || f.name.endsWith('.json')));
+        const valid = files.filter(f => f.type === 'application/json' || f.name.endsWith('.json'));
+        setTranscriptFiles(valid);
     };
 
     const handleStart = async () => {
@@ -38,7 +40,6 @@ export const Setup = ({ onReady }: Props) => {
             const unmatchedAudio = [...audioFiles];
             const tasks: any[] = [];
             
-            // First pair them all up
             for (const tFile of transcriptFiles) {
                 const tBase = tFile.name.replace(/\.[^/.]+$/, "");
                 const tNorm = tBase.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -140,51 +141,78 @@ export const Setup = ({ onReady }: Props) => {
 
     return (
         <div className="flex flex-col items-center justify-center h-full p-6">
-            <div className="max-w-md w-full bg-white/5 backdrop-blur-md p-8 rounded-3xl shadow-2xl border border-white/10 relative">
-                <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent rounded-3xl pointer-events-none"></div>
-                <div className="relative z-10">
-                    <h1 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
-                        <FolderArchive className="text-indigo-400" /> Lesson Folders
-                    </h1>
-                    <p className="text-slate-400 text-sm mb-8 leading-relaxed">
-                        Upload folders containing your language audios and their matching JSON transcripts. They will be paired automatically by filename and uploaded to the cloud.
-                    </p>
-                    
-                    <div className="space-y-4 mb-8">
-                        <label className={`flex flex-col items-center justify-center w-full h-32 border border-dashed rounded-xl cursor-pointer transition-colors ${audioFiles.length > 0 ? 'border-indigo-400/50 bg-indigo-500/10' : 'border-white/20 bg-white/5 hover:bg-white/10'}`}>
-                            <Headphones className={`w-8 h-8 mb-2 ${audioFiles.length > 0 ? 'text-indigo-400' : 'text-slate-500'}`} />
-                            <span className="text-sm font-medium text-slate-300">
+            <div className="max-w-md w-full bg-slate-800/80 backdrop-blur-md rounded-3xl p-8 border border-white/10 shadow-2xl">
+                <div className="flex items-center gap-3 mb-6">
+                    <FolderArchive className="w-8 h-8 text-indigo-400" />
+                    <h2 className="text-3xl font-bold text-white tracking-tight">Lesson Folders</h2>
+                </div>
+                
+                <p className="text-slate-300 mb-8 leading-relaxed">
+                    Upload folders containing your language audios and their matching JSON transcripts. 
+                    They will be paired automatically by filename and uploaded to the cloud.
+                </p>
+
+                <div className="space-y-6">
+                    <div className="relative group">
+                        <input 
+                            type="file" 
+                            // @ts-ignore
+                            webkitdirectory="" 
+                            directory="" 
+                            multiple 
+                            onChange={handleAudioFolder}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                        />
+                        <div className={`flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-2xl transition-colors ${audioFiles.length > 0 ? 'border-indigo-500/50 bg-indigo-500/10' : 'border-slate-600 bg-slate-900/50 group-hover:border-indigo-500/30 group-hover:bg-slate-800/50'}`}>
+                            <Headphones className={`w-8 h-8 mb-3 ${audioFiles.length > 0 ? 'text-indigo-400' : 'text-slate-500'}`} />
+                            <span className="font-semibold text-slate-200">
                                 {audioFiles.length > 0 ? 'Audio Folder Selected' : 'Select Audio Folder'}
                             </span>
-                            {audioFiles.length > 0 && <span className="text-xs text-slate-400 mt-1">{audioFiles.length} valid audio files found</span>}
-                            <input type="file" {...{ webkitdirectory: "", directory: "" }} multiple className="hidden" onChange={handleAudioFolder} />
-                        </label>
-                        
-                        <label className={`flex flex-col items-center justify-center w-full h-32 border border-dashed rounded-xl cursor-pointer transition-colors ${transcriptFiles.length > 0 ? 'border-indigo-400/50 bg-indigo-500/10' : 'border-white/20 bg-white/5 hover:bg-white/10'}`}>
-                            <BookOpen className={`w-8 h-8 mb-2 ${transcriptFiles.length > 0 ? 'text-indigo-400' : 'text-slate-500'}`} />
-                            <span className="text-sm font-medium text-slate-300">
-                                {transcriptFiles.length > 0 ? 'Transcript Folder Selected' : 'Select Transcripts Folder'}
-                            </span>
-                            {transcriptFiles.length > 0 && <span className="text-xs text-slate-400 mt-1">{transcriptFiles.length} valid JSON files found</span>}
-                            <input type="file" {...{ webkitdirectory: "", directory: "" }} multiple className="hidden" onChange={handleTranscriptFolder} />
-                        </label>
+                            {audioFiles.length > 0 && (
+                                <span className="text-sm text-slate-400 mt-1">{audioFiles.length} valid audio files found</span>
+                            )}
+                        </div>
                     </div>
 
-                    {error && <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>}
-                    
-                    <button 
+                    <div className="relative group">
+                        <input 
+                            type="file" 
+                            // @ts-ignore
+                            webkitdirectory="" 
+                            directory="" 
+                            multiple 
+                            onChange={handleTranscriptFolder}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                        />
+                        <div className={`flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-2xl transition-colors ${transcriptFiles.length > 0 ? 'border-indigo-500/50 bg-indigo-500/10' : 'border-slate-600 bg-slate-900/50 group-hover:border-indigo-500/30 group-hover:bg-slate-800/50'}`}>
+                            <BookOpen className={`w-8 h-8 mb-3 ${transcriptFiles.length > 0 ? 'text-indigo-400' : 'text-slate-500'}`} />
+                            <span className="font-semibold text-slate-200">
+                                {transcriptFiles.length > 0 ? 'Transcript Folder Selected' : 'Select Transcripts Folder'}
+                            </span>
+                            {transcriptFiles.length > 0 && (
+                                <span className="text-sm text-slate-400 mt-1">{transcriptFiles.length} valid JSON files found</span>
+                            )}
+                        </div>
+                    </div>
+
+                    {error && (
+                        <div className="p-4 bg-red-500/20 border border-red-500/50 rounded-xl text-red-200 text-sm overflow-hidden break-words">
+                            {error}
+                        </div>
+                    )}
+
+                    <button
                         onClick={handleStart}
-                        disabled={audioFiles.length === 0 || transcriptFiles.length === 0 || isProcessing}
-                        className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-white/5 disabled:text-slate-500 disabled:border disabled:border-white/10 disabled:cursor-not-allowed text-white font-semibold py-4 rounded-xl transition-colors shadow-lg shadow-indigo-500/20 relative overflow-hidden"
+                        disabled={!audioFiles.length || !transcriptFiles.length || isProcessing}
+                        className="w-full py-4 rounded-xl font-bold text-lg shadow-lg transition-all relative overflow-hidden flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30"
                     >
-                        {isProcessing ? (
-                            <>
-                                <div className="absolute inset-0 bg-indigo-400/30" style={{ width: `${uploadProgress}%`, transition: 'width 0.3s ease' }}></div>
-                                <span className="relative z-10">Uploading... {uploadProgress}%</span>
-                            </>
-                        ) : (
-                            <><Play className="w-5 h-5 fill-current" /> Upload & Build Course</>
+                        {isProcessing && (
+                            <div className="absolute inset-0 bg-indigo-400/20" style={{ width: `${uploadProgress}%`, transition: 'width 0.3s ease' }} />
                         )}
+                        <span className="relative z-10 flex items-center gap-2">
+                            {isProcessing ? `Processing... ${uploadProgress}%` : 'Upload & Build Course'}
+                            {!isProcessing && <Play className="w-5 h-5 fill-current" />}
+                        </span>
                     </button>
                 </div>
             </div>

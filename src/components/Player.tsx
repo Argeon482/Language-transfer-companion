@@ -347,7 +347,7 @@ export const Player = ({ audioUrl, lessonName, transcriptData, onAutoFlashcard, 
                 </div>
             </div>
             
-            {audioUrl && (
+                        {audioUrl && (
                 <audio 
                     ref={audioRef} 
                     src={audioUrl} 
