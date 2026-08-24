@@ -9,7 +9,7 @@ import { Player } from './components/Player';
 import { FlashcardsView } from './components/FlashcardsView';
 import { Lesson, Flashcard } from './types';
 import localforage from 'localforage';
-import { Menu, BookOpen, Layers } from 'lucide-react';
+import { Menu, BookOpen, Layers, Maximize } from 'lucide-react';
 
 export default function App() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
@@ -84,9 +84,21 @@ export default function App() {
     return lessons.filter(l => l.name.toLowerCase().includes(search.toLowerCase()));
   }, [lessons, search]);
 
+  const toggleFullScreen = async () => {
+    if (!document.fullscreenElement) {
+      await document.documentElement.requestFullscreen().catch(err => {
+        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+      });
+    } else {
+      if (document.exitFullscreen) {
+        await document.exitFullscreen();
+      }
+    }
+  };
+
   if (isLoadingDB) {
     return (
-      <div className="w-full h-screen bg-[#0f172a] flex items-center justify-center">
+      <div className="w-full h-[100dvh] bg-[#0f172a] flex items-center justify-center">
         <div className="animate-pulse text-indigo-400 font-bold tracking-widest text-sm">LOADING COURSE DATA...</div>
       </div>
     );
@@ -94,7 +106,7 @@ export default function App() {
 
   if (lessons.length === 0 || !activeLessonId) {
     return (
-      <div className="w-full h-screen bg-[#0f172a] text-slate-100 font-sans overflow-hidden relative flex flex-col">
+      <div className="w-full h-[100dvh] bg-[#0f172a] text-slate-100 font-sans overflow-hidden relative flex flex-col">
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600/30 rounded-full blur-[120px]"></div>
           <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-cyan-600/20 rounded-full blur-[120px]"></div>
@@ -113,7 +125,7 @@ export default function App() {
   const progressPercent = ((globalLessonIndex + 1) / lessons.length) * 100;
 
   return (
-    <div className="w-full h-screen bg-[#0f172a] text-slate-100 font-sans overflow-hidden relative flex flex-col">
+    <div className="w-full h-[100dvh] bg-[#0f172a] text-slate-100 font-sans overflow-hidden relative flex flex-col">
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600/30 rounded-full blur-[120px]"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-cyan-600/20 rounded-full blur-[120px]"></div>
@@ -141,6 +153,13 @@ export default function App() {
               <span className="text-xs font-mono text-indigo-300 w-12 text-right">{progressText}</span>
             </div>
           </div>
+          <button 
+            onClick={toggleFullScreen}
+            className="p-2 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-colors text-slate-300 hover:text-white"
+            title="Toggle Fullscreen"
+          >
+            <Maximize className="w-4 h-4" />
+          </button>
           <button 
             onClick={handleClearLessons} 
             className="px-4 py-2 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-colors text-sm font-medium text-slate-300 hover:text-white"
