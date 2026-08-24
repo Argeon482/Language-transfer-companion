@@ -72,13 +72,21 @@ export const Player = ({ audioFile, transcriptData }: Props) => {
             navigator.mediaSession.setActionHandler('seekbackward', (details) => {
                 if (audioRef.current) {
                     const skipTime = details.seekOffset || 5;
-                    audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - skipTime);
+                    const newTime = Math.max(0, audioRef.current.currentTime - skipTime);
+                    audioRef.current.currentTime = newTime;
+                    lastTimeRef.current = newTime;
+                    lastPausedPointRef.current = -1;
+                    setCurrentTime(newTime);
                 }
             });
             navigator.mediaSession.setActionHandler('seekforward', (details) => {
                 if (audioRef.current) {
                     const skipTime = details.seekOffset || 5;
-                    audioRef.current.currentTime = Math.min(audioRef.current.duration, audioRef.current.currentTime + skipTime);
+                    const newTime = Math.min(audioRef.current.duration, audioRef.current.currentTime + skipTime);
+                    audioRef.current.currentTime = newTime;
+                    lastTimeRef.current = newTime;
+                    lastPausedPointRef.current = -1;
+                    setCurrentTime(newTime);
                 }
             });
             
@@ -100,6 +108,9 @@ export const Player = ({ audioFile, transcriptData }: Props) => {
                 }
                 
                 audioRef.current.currentTime = targetTime;
+                lastTimeRef.current = targetTime;
+                lastPausedPointRef.current = -1;
+                setCurrentTime(targetTime);
                 audioRef.current.play().catch(() => {});
             };
 
