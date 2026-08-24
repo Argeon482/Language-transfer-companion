@@ -1,0 +1,6 @@
+{
+  "name": "Language Transfer Companion",
+  "description": "An interactive audio player with auto-pausing, transcript tracking, and built-in spaced repetition flashcards for language learning.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
