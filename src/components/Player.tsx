@@ -4,6 +4,7 @@ import { TranscriptData, GlobalWord, Bubble } from '../types';
 import { TranscriptView } from './TranscriptView';
 
 interface Props {
+    key?: any;
     audioUrl: string;
     lessonName: string;
     transcriptData: TranscriptData;

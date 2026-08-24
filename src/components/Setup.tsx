@@ -3,7 +3,7 @@ import { BookOpen, Headphones, Play, FolderArchive } from 'lucide-react';
 import { TranscriptData, Lesson } from '../types';
 import { db, storage } from '../lib/firebase';
 import { doc, setDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 
 interface Props {
     onReady: () => void;
@@ -17,12 +17,12 @@ export const Setup = ({ onReady }: Props) => {
     const [error, setError] = useState<string | null>(null);
 
     const handleAudioFolder = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = Array.from(e.target.files || []);
+        const files = Array.from(e.target.files || []) as File[];
         setAudioFiles(files.filter(f => f.type.startsWith('audio/') || f.name.match(/\.(mp3|wav|ogg|m4a)$/i)));
     };
 
     const handleTranscriptFolder = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = Array.from(e.target.files || []);
+        const files = Array.from(e.target.files || []) as File[];
         setTranscriptFiles(files.filter(f => f.type === 'application/json' || f.name.endsWith('.json')));
     };
 
@@ -33,10 +33,12 @@ export const Setup = ({ onReady }: Props) => {
         setUploadProgress(0);
         
         try {
+            await new Promise(r => setTimeout(r, 50));
+            
             const unmatchedAudio = [...audioFiles];
-            let completed = 0;
-            const totalToProcess = transcriptFiles.length;
-
+            const tasks: any[] = [];
+            
+            // First pair them all up
             for (const tFile of transcriptFiles) {
                 const tBase = tFile.name.replace(/\.[^/.]+$/, "");
                 const tNorm = tBase.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -59,41 +61,78 @@ export const Setup = ({ onReady }: Props) => {
                 if (aIndex !== -1) {
                     const aFile = unmatchedAudio[aIndex];
                     unmatchedAudio.splice(aIndex, 1);
-                    
-                    try {
-                        const text = await tFile.text();
-                        const data = JSON.parse(text) as TranscriptData;
-                        
-                        if (data.segments && Array.isArray(data.segments)) {
-                            const title = tNum !== null ? `Lesson ${tNum}` : tBase;
-                            const id = `lesson-${tNum !== null ? tNum : tNorm}`;
-                            
-                            // Upload audio to Storage
-                            const audioRef = ref(storage, `audio/${id}/${aFile.name}`);
-                            await uploadBytes(audioRef, aFile);
-                            const audioUrl = await getDownloadURL(audioRef);
-                            
-                            // Save lesson to Firestore
-                            await setDoc(doc(db, 'lessons', id), {
-                                id,
-                                name: title,
-                                audioUrl,
-                                transcriptData: data,
-                                order: tNum !== null ? tNum : 999
-                            });
-                        }
-                    } catch (e) {
-                        console.warn(`Failed to parse or upload ${tFile.name}`, e);
-                    }
+                    tasks.push({ tFile, aFile, tNum, tBase, tNorm });
                 }
-                completed++;
-                setUploadProgress(Math.round((completed / totalToProcess) * 100));
             }
 
+            if (tasks.length === 0) {
+                setError("No matching pairs found.");
+                setIsProcessing(false);
+                return;
+            }
+
+            const totalBytes = tasks.reduce((sum, task) => sum + task.aFile.size, 0);
+            let uploadedBytes = 0;
+            const progressMap = new Map();
+
+            // Process sequentially to not overload network
+            for (const task of tasks) {
+                const { tFile, aFile, tNum, tBase, tNorm } = task;
+                
+                try {
+                    const text = await tFile.text();
+                    const data = JSON.parse(text) as TranscriptData;
+                    
+                    if (data.segments && Array.isArray(data.segments)) {
+                        const title = tNum !== null ? `Lesson ${tNum}` : tBase;
+                        const id = `lesson-${tNum !== null ? tNum : tNorm}`;
+                        
+                        // Upload audio
+                        const audioRef = ref(storage, `audio/${id}/${aFile.name}`);
+                        const uploadTask = uploadBytesResumable(audioRef, aFile);
+                        
+                        await new Promise<void>((resolve, reject) => {
+                            uploadTask.on('state_changed', 
+                                (snapshot) => {
+                                    progressMap.set(aFile.name, snapshot.bytesTransferred);
+                                    let currentTotal = 0;
+                                    progressMap.forEach(bytes => { currentTotal += bytes; });
+                                    setUploadProgress(Math.min(99, Math.round((currentTotal / totalBytes) * 100)));
+                                },
+                                (error) => {
+                                    console.error("Upload error:", error);
+                                    reject(error);
+                                },
+                                async () => {
+                                    try {
+                                        const audioUrl = await getDownloadURL(uploadTask.snapshot.ref);
+                                        await setDoc(doc(db, 'lessons', id), {
+                                            id,
+                                            name: title,
+                                            audioUrl,
+                                            transcriptData: data,
+                                            order: tNum !== null ? tNum : 999
+                                        });
+                                        resolve();
+                                    } catch (e) {
+                                        reject(e);
+                                    }
+                                }
+                            );
+                        });
+                    }
+                } catch (e) {
+                    console.warn(`Failed to parse or upload ${tFile.name}`, e);
+                    setError(`Error on ${tFile.name}: ${(e as any).message}`);
+                }
+            }
+
+            setUploadProgress(100);
+            await new Promise(r => setTimeout(r, 500));
             onReady();
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            setError('An error occurred while uploading files.');
+            setError('An error occurred while uploading: ' + e.message);
         }
         
         setIsProcessing(false);
