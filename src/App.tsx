@@ -19,6 +19,7 @@ export default function App() {
   const [isLoadingDB, setIsLoadingDB] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [sidebarTab, setSidebarTab] = useState<'lessons' | 'flashcards'>('lessons');
+  const [autoPlay, setAutoPlay] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -28,6 +29,7 @@ export default function App() {
       if (savedLessons && savedLessons.length > 0) {
         setLessons(savedLessons);
         setActiveLessonId(savedLessons[0].id);
+        setAutoPlay(false);
       }
       if (savedFlashcards) {
         setFlashcards(savedFlashcards);
@@ -42,6 +44,7 @@ export default function App() {
   const handleLessonsReady = (loadedLessons: Lesson[]) => {
     setLessons(loadedLessons);
     setActiveLessonId(loadedLessons[0]?.id || null);
+    setAutoPlay(false);
     localforage.setItem('saved_lessons', loadedLessons).catch(e => console.error('Failed to save to IndexedDB', e));
   };
 
@@ -49,6 +52,7 @@ export default function App() {
     localforage.removeItem('saved_lessons').then(() => {
       setLessons([]);
       setActiveLessonId(null);
+      setAutoPlay(false);
     });
   };
 
@@ -70,6 +74,36 @@ export default function App() {
       lessonId: activeLessonId || undefined
     };
     saveFlashcards([...flashcards, newCard]);
+  };
+
+  const handleAutoFlashcard = (front: string, back: string) => {
+    setFlashcards((prevFlashcards) => {
+      if (!prevFlashcards.some(c => c.front.toLowerCase() === front.toLowerCase() && c.back.toLowerCase() === back.toLowerCase())) {
+        const newCard: Flashcard = {
+          id: crypto.randomUUID(),
+          front,
+          back,
+          nextReview: Date.now(),
+          interval: 0,
+          easeFactor: 2.5,
+          repetitions: 0,
+          createdAt: Date.now(),
+          lessonId: activeLessonId || undefined
+        };
+        const updated = [...prevFlashcards, newCard];
+        localforage.setItem('saved_flashcards', updated).catch(e => console.error('Failed to save flashcards', e));
+        return updated;
+      }
+      return prevFlashcards;
+    });
+  };
+
+  const handleLessonComplete = () => {
+    const currentIndex = lessons.findIndex(l => l.id === activeLessonId);
+    if (currentIndex !== -1 && currentIndex < lessons.length - 1) {
+      setActiveLessonId(lessons[currentIndex + 1].id);
+      setAutoPlay(true);
+    }
   };
 
   const handleUpdateFlashcard = (updated: Flashcard) => {
@@ -207,6 +241,7 @@ export default function App() {
                         key={lesson.id} 
                         onClick={() => {
                           setActiveLessonId(lesson.id);
+                          setAutoPlay(true);
                           if (window.innerWidth < 768) setIsSidebarOpen(false);
                         }}
                         className={`p-3 rounded-lg flex flex-col gap-1 cursor-pointer transition-colors ${
@@ -242,7 +277,14 @@ export default function App() {
         )}
 
         <section className="flex-1 flex flex-col relative overflow-hidden">
-          <Player key={activeLesson.id} audioFile={activeLesson.audioFile} transcriptData={activeLesson.transcriptData} />
+          <Player 
+            key={activeLesson.id} 
+            audioFile={activeLesson.audioFile} 
+            transcriptData={activeLesson.transcriptData} 
+            autoPlay={autoPlay}
+            onAutoFlashcard={handleAutoFlashcard}
+            onLessonComplete={handleLessonComplete}
+          />
         </section>
       </main>
     </div>

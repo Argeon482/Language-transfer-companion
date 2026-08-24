@@ -6,9 +6,12 @@ import { TranscriptView } from './TranscriptView';
 interface Props {
     audioFile: File;
     transcriptData: TranscriptData;
+    onAutoFlashcard?: (front: string, back: string) => void;
+    onLessonComplete?: () => void;
+    autoPlay?: boolean;
 }
 
-export const Player = ({ audioFile, transcriptData }: Props) => {
+export const Player = ({ audioFile, transcriptData, onAutoFlashcard, onLessonComplete, autoPlay }: Props) => {
     const [audioUrl, setAudioUrl] = useState<string>('');
     const audioRef = useRef<HTMLAudioElement>(null);
     
@@ -179,6 +182,23 @@ export const Player = ({ audioFile, transcriptData }: Props) => {
                     audio.currentTime = passedPoint;
                     lastPausedPointRef.current = passedPoint;
                     setIsWaitingForUser(true);
+                    
+                    if (onAutoFlashcard) {
+                        const nextWord = allWords.find(w => w.start >= passedPoint - 0.1);
+                        if (nextWord && nextWord.speaker === 'student') {
+                            const studentBubbleIndex = bubbles.findIndex(b => b.words.some(w => w.globalIndex === nextWord.globalIndex));
+                            if (studentBubbleIndex !== -1) {
+                                const studentBubble = bubbles[studentBubbleIndex];
+                                const teacherBubble = bubbles[studentBubbleIndex - 1];
+                                if (teacherBubble && teacherBubble.speaker !== 'student') {
+                                    // Remove excess whitespace handling since some transcripts might already include spaces
+                                    const front = studentBubble.words.map(w => w.word.trim()).filter(w => w).join(' ');
+                                    const back = teacherBubble.words.map(w => w.word.trim()).filter(w => w).join(' ');
+                                    onAutoFlashcard(front, back);
+                                }
+                            }
+                        }
+                    }
                 }
             }
             
@@ -198,7 +218,7 @@ export const Player = ({ audioFile, transcriptData }: Props) => {
         
         animationFrameId = requestAnimationFrame(updateTime);
         return () => cancelAnimationFrame(animationFrameId);
-    }, [autoPause, pausePoints, allWords]);
+    }, [autoPause, pausePoints, allWords, bubbles, onAutoFlashcard]);
 
     const activeBubbleIndex = useMemo(() => {
         return bubbles.findIndex(b => b.words.some(w => w.globalIndex === activeWordIndex));
@@ -335,6 +355,7 @@ export const Player = ({ audioFile, transcriptData }: Props) => {
                 <audio 
                     ref={audioRef} 
                     src={audioUrl} 
+                    autoPlay={autoPlay}
                     onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
                     onPlay={() => { 
                         setIsPlaying(true); 
@@ -348,6 +369,7 @@ export const Player = ({ audioFile, transcriptData }: Props) => {
                     onEnded={() => {
                         setIsPlaying(false);
                         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none';
+                        onLessonComplete?.();
                     }}
                 />
             )}
